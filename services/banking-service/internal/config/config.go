@@ -55,7 +55,8 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Port:          getEnv("PORT", "8001"),
+		Port: "8002",
+		// Port:          getEnv("PORT", "8001"),
 		LogLevel:      getEnv("LOG_LEVEL", "info"),
 		LogFormat:     getEnv("LOG_FORMAT", "json"),
 		RedisAddr:     net.JoinHostPort(getEnv("REDIS_HOST", "localhost"), getEnv("REDIS_PORT", "6379")),

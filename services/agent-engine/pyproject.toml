@@ -1,0 +1,10 @@
+[project]
+name = "agent-engine"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
+    "ollama>=0.6.2",
+    "uvicorn>=0.54.0",
+]
