@@ -1,0 +1,69 @@
+// Ships logs from this project's containers (named bank-*) to Loki.
+// banking-service logs are JSON: level becomes a label, and trace_id and
+// request_id become structured metadata, so a trace in Tempo links to its logs.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // Only this project's containers, not everything on the host.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/bank-.*"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.containers.output
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.banking_service.receiver]
+}
+
+loki.process "banking_service" {
+  stage.match {
+    selector = "{service=\"banking-service\"}"
+
+    stage.json {
+      expressions = {
+        level      = "level",
+        trace_id   = "trace_id",
+        request_id = "request_id",
+      }
+    }
+
+    stage.labels {
+      values = { level = "" }
+    }
+
+    stage.structured_metadata {
+      values = {
+        trace_id   = "",
+        request_id = "",
+      }
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

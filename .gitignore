@@ -1,0 +1,13 @@
+# Python
+.venv/
+venv/
+__pycache__/
+
+# Local config
+.env
+
+# Go build output
+/bin/
+
+# Test build output
+.bin/

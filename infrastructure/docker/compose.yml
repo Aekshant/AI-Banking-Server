@@ -1,0 +1,77 @@
+# Core services. Included by the repo-root docker-compose.yml.
+#
+#   docker compose up -d                          postgres + redis
+#   docker compose --profile app up -d --build    + banking-service in a container
+#
+# Credentials come from the repo-root .env (see .env.example).
+
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: bank-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: bank-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  banking-service:
+    profiles: ["app"]
+    build:
+      context: ../../services/banking-service
+      dockerfile: ../../infrastructure/docker/banking-service/Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+    image: bank-agent-platform/banking-service:${VERSION:-dev}
+    container_name: bank-banking-service
+    env_file:
+      - path: ../../../.env
+        required: false
+    environment:
+      # Inside the Compose network, reach dependencies by service name.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PORT: "8001"
+      LOG_FORMAT: json
+      # Traces go to Tempo when the observability profile is running.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      OTEL_SERVICE_NAME: banking-service
+    ports:
+      - "${BANKING_SERVICE_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  postgres_data:

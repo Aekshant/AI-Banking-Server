@@ -1,0 +1,116 @@
+# Observability stack. Included by the repo-root docker-compose.yml.
+#
+#   docker compose --profile observability up -d
+#
+#   Grafana      http://localhost:3000   dashboards, logs, traces (admin / GRAFANA_ADMIN_PASSWORD)
+#   Prometheus   http://localhost:9090   metrics + alert rules
+#   Loki         http://localhost:3100   logs (query through Grafana)
+#   Tempo        http://localhost:3200   traces; OTLP on 4317 (gRPC) / 4318 (HTTP)
+#   Alloy        http://localhost:12345  log shipper UI
+
+x-observability: &observability
+  profiles: ["observability"]
+  restart: unless-stopped
+
+services:
+
+  prometheus:
+    <<: *observability
+    image: prom/prometheus:v3.5.0
+    container_name: bank-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --enable-feature=exemplar-storage
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    extra_hosts:
+      # Lets Prometheus scrape a service started with `make run` on the host.
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    <<: *observability
+    image: grafana/grafana:12.1.0
+    container_name: bank-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: system
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/banking-service.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on: [prometheus, loki, tempo]
+
+  loki:
+    <<: *observability
+    image: grafana/loki:3.5.3
+    container_name: bank-loki
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+
+  tempo:
+    <<: *observability
+    image: grafana/tempo:2.8.1
+    container_name: bank-tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "${TEMPO_PORT:-3200}:3200"
+      - "${OTLP_GRPC_PORT:-4317}:4317"
+      - "${OTLP_HTTP_PORT:-4318}:4318"
+
+  alloy:
+    <<: *observability
+    image: grafana/alloy:v1.10.0
+    container_name: bank-alloy
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${ALLOY_PORT:-12345}:12345"
+    depends_on: [loki]
+
+  postgres-exporter:
+    <<: *observability
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: bank-postgres-exporter
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    depends_on: [postgres]
+
+  redis-exporter:
+    <<: *observability
+    image: oliver006/redis_exporter:v1.74.0
+    container_name: bank-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    depends_on: [redis]
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  tempo_data:

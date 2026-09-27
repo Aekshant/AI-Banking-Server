@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Scraped through the host port, so the same target works whether the
+  # service runs in Docker (--profile app publishes 8001) or on the host
+  # (make run). Listing both would count every request twice.
+  - job_name: banking-service
+    static_configs:
+      - targets: ["host.docker.internal:8001"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # The observability stack watching itself.
+  - job_name: observability
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels: { component: prometheus }
+      - targets: ["loki:3100"]
+        labels: { component: loki }
+      - targets: ["tempo:3200"]
+        labels: { component: tempo }
+      - targets: ["alloy:12345"]
+        labels: { component: alloy }
+      - targets: ["grafana:3000"]
+        labels: { component: grafana }

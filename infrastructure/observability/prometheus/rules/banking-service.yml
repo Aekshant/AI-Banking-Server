@@ -1,0 +1,83 @@
+groups:
+  - name: banking-service
+    rules:
+
+      - alert: BankingServiceDown
+        expr: absent(up{job="banking-service"} == 1)
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: banking-service is down
+          description: No banking-service instance has answered a Prometheus scrape for 1 minute.
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="banking-service", status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="banking-service"}[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: More than 5% of requests are failing
+          description: '{{ $value | humanizePercentage }} of banking-service requests returned 5xx over the last 5 minutes.'
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="banking-service", route!="unmatched"}[5m]))
+          ) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: p99 latency above 500 ms
+          description: 'p99 latency is {{ $value | humanizeDuration }}.'
+
+      - alert: TransferErrors
+        # Unexpected failures on the money path, not business rejections.
+        expr: increase(transfers_total{outcome="error"}[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: Transfers are failing with internal errors
+          description: '{{ $value | humanize }} transfers failed with a 500 in the last 5 minutes.'
+
+      - alert: IdempotencyConflicts
+        expr: increase(transfers_total{outcome="idempotency_conflict"}[15m]) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: Clients are reusing idempotency keys for different transfers
+          description: Likely a client bug generating keys. {{ $value | humanize }} conflicts in 15 minutes.
+
+      - alert: RateLimiterFailingOpen
+        # Redis errors mean requests are currently NOT rate limited.
+        expr: sum(increase(ratelimit_decisions_total{decision="error"}[5m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: Rate limiter is failing open
+          description: The limiter could not reach Redis and allowed requests without limiting.
+
+      - alert: DatabasePoolSaturated
+        expr: |
+          sum(db_pool_connections{state="acquired"}) / sum(db_pool_max_connections) > 0.9
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: Postgres connection pool over 90% used
+          description: Requests may start queueing for connections.
+
+  - name: dependencies
+    rules:
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: Postgres is unreachable
+          description: postgres-exporter cannot connect to Postgres.
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: Redis is unreachable
+          description: Rate limiting is failing open while Redis is down.

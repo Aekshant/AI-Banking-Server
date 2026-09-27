@@ -1,0 +1,301 @@
+basePath: /
+definitions:
+  accounts.Profile:
+    properties:
+      aadhaar:
+        example: XXXX XXXX 9012
+        type: string
+      balance:
+        example: 125000.5
+        type: number
+      credit_score:
+        example: 742
+        type: integer
+      customer_id:
+        example: customer-001
+        type: string
+      full_name:
+        example: Rahul Sharma
+        type: string
+      is_2fa_verified:
+        example: true
+        type: boolean
+      pan:
+        example: XXXXX1234X
+        type: string
+    type: object
+  health.Status:
+    properties:
+      database:
+        example: up
+        type: string
+      redis:
+        description: |-
+          Redis only backs rate limiting, which fails open, so "down" here
+          degrades the service but does not make it unhealthy.
+        example: up
+        type: string
+    type: object
+  loans.EvaluateRequest:
+    properties:
+      customer_id:
+        example: customer-001
+        maxLength: 64
+        type: string
+      loan_amount:
+        example: 500000
+        type: number
+    required:
+    - customer_id
+    - loan_amount
+    type: object
+  loans.EvaluateResult:
+    properties:
+      approved:
+        example: true
+        type: boolean
+      credit_score:
+        example: 742
+        type: integer
+      customer_id:
+        example: customer-001
+        type: string
+      max_eligible_amount:
+        example: 540727.75
+        type: number
+      reason:
+        enum:
+        - ELIGIBLE
+        - LOW_CREDIT_SCORE
+        - IDENTITY_NOT_VERIFIED
+        - AMOUNT_EXCEEDS_LIMIT
+        example: ELIGIBLE
+        type: string
+    type: object
+  response.Response:
+    properties:
+      data: {}
+      message:
+        example: Request successful
+        type: string
+      status:
+        example: 200
+        type: integer
+      success:
+        example: true
+        type: boolean
+    type: object
+  transactions.Transaction:
+    properties:
+      amount:
+        example: 5000
+        type: number
+      status:
+        example: SETTLED
+        type: string
+      transaction_id:
+        example: 3f1c2a9e-8b7d-4c6e-9f10-2a3b4c5d6e7f
+        type: string
+    type: object
+  transactions.TransferRequest:
+    properties:
+      amount:
+        example: 5000
+        type: number
+      from_account:
+        example: customer-001
+        maxLength: 64
+        type: string
+      idempotency_key:
+        example: tx-123
+        maxLength: 128
+        type: string
+      to_account:
+        example: customer-002
+        maxLength: 64
+        type: string
+    required:
+    - amount
+    - from_account
+    - idempotency_key
+    - to_account
+    type: object
+info:
+  contact: {}
+  description: Core banking API for the bank agent platform. PII is masked at this
+    layer.
+  title: Banking Service API
+  version: "1.0"
+paths:
+  /api/v1/accounts/{id}/profile:
+    get:
+      description: Returns a customer's profile. PAN and Aadhaar are masked by the
+        API.
+      parameters:
+      - description: Customer ID
+        example: customer-001
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/accounts.Profile'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "429":
+          description: Rate limit exceeded; see Retry-After header
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Get account profile
+      tags:
+      - accounts
+  /api/v1/accounts/transfer:
+    post:
+      consumes:
+      - application/json
+      description: Moves money between two accounts atomically. Retrying with the
+        same idempotency_key returns the original transaction instead of transferring
+        again.
+      parameters:
+      - description: Transfer details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/transactions.TransferRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Duplicate request; original transaction returned
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/transactions.Transaction'
+              type: object
+        "201":
+          description: Transfer settled
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/transactions.Transaction'
+              type: object
+        "400":
+          description: Invalid request or insufficient funds
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Account not found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: Idempotency key reused with different parameters
+          schema:
+            $ref: '#/definitions/response.Response'
+        "429":
+          description: Rate limit exceeded; see Retry-After header
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Transfer funds
+      tags:
+      - accounts
+  /api/v1/loans/evaluate:
+    post:
+      consumes:
+      - application/json
+      description: 'Applies deterministic lending rules (no LLM). Rules, first failure
+        wins: credit score >= 650 (LOW_CREDIT_SCORE); 2FA verified (IDENTITY_NOT_VERIFIED);
+        amount <= min(balance x multiplier, ₹1 crore) where the multiplier is 10x
+        for score 750+, 5x for 700-749, 2x for 650-699 (AMOUNT_EXCEEDS_LIMIT).'
+      parameters:
+      - description: Loan request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/loans.EvaluateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Evaluated (approved or rejected)
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/loans.EvaluateResult'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "429":
+          description: Rate limit exceeded; see Retry-After header
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Evaluate loan eligibility
+      tags:
+      - loans
+  /health:
+    get:
+      description: Reports service health. Returns 503 if Postgres is down. Redis
+        being down is reported but still returns 200, because rate limiting fails
+        open.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/health.Status'
+              type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/health.Status'
+              type: object
+      summary: Health check
+      tags:
+      - health
+swagger: "2.0"
