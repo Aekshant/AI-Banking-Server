@@ -37,7 +37,7 @@ This project is the banking backend such an agent would call, designed so that e
 You need **Docker**, **Go 1.27+** and **Python 3.8+**.
 
 ```bash
-git clone https://github.com/<your-username>/bank-agent-platform.git
+git clone https://github.com/Aekshant/bank-agent-platform.git
 cd bank-agent-platform
 
 cp .env.example .env        # then set POSTGRES_PASSWORD and GRAFANA_ADMIN_PASSWORD
