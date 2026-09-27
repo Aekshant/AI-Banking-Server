@@ -1,5 +1,5 @@
 BANKING_SERVICE := services/banking-service
-COMPOSE := cd .. && docker compose
+COMPOSE := docker compose
 
 .PHONY: run test test-unit test-integration test-load test-all swagger seed \
         up up-app up-observability up-all down ps logs image

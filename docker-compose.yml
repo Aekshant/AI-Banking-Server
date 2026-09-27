@@ -1,0 +1,17 @@
+# Entry point for the whole stack. Service definitions live in infrastructure/.
+# Settings come from .env (copy .env.example).
+#
+#   docker compose up -d                                     postgres + redis
+#   docker compose --profile app up -d --build               + banking-service
+#   docker compose --profile observability up -d             + Prometheus, Grafana, Loki, Tempo, Alloy
+#   docker compose --profile app --profile observability up -d --build     everything
+#
+# Or use the make targets: make up, make up-app, make up-observability, make up-all.
+
+# Fixed project name, so container and volume names don't depend on the
+# directory the repo was cloned into.
+name: bank-agent-platform
+
+include:
+  - infrastructure/docker/compose.yml
+  - infrastructure/observability/compose.yml

@@ -24,7 +24,7 @@ The repo-root `docker-compose.yml` only `include`s these two compose files. Sett
 
 ## Running
 
-From `bank-agent-platform/`:
+From the repo root:
 
 | Command | Starts |
 |---|---|
@@ -35,7 +35,7 @@ From `bank-agent-platform/`:
 | `make down` | Stops everything. Data volumes are kept |
 | `make logs` | Follows the service container's logs |
 
-Or with Compose directly from the repo root: `docker compose --profile app --profile observability up -d --build`.
+Or with Compose directly: `docker compose --profile app --profile observability up -d --build`.
 
 The containerised service and `make run` both use port 8001, so run one or the other.
 

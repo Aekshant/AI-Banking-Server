@@ -48,7 +48,7 @@ services:
     image: bank-agent-platform/banking-service:${VERSION:-dev}
     container_name: bank-banking-service
     env_file:
-      - path: ../../../.env
+      - path: ../../.env
         required: false
     environment:
       # Inside the Compose network, reach dependencies by service name.

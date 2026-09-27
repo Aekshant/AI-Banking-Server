@@ -17,7 +17,7 @@ Run from the repo root:
 cp .env.example .env                  # set POSTGRES_PASSWORD
 docker compose up -d                  # Postgres + Redis; schema created on first start
 
-cd bank-agent-platform/database/seed
+cd database/seed
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python seed.py              # 50 synthetic customers
@@ -35,7 +35,7 @@ curl localhost:8001/health
 
 ## Everyday commands
 
-Run from `bank-agent-platform/`:
+Run from the repo root:
 
 | Command | What it does |
 |---|---|
